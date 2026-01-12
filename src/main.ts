@@ -2,38 +2,41 @@ import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 import { MapsService } from "./maps/maps.service";
 import { CsvMapsService } from "./csv-maps/csv-maps.service";
+import { Logger } from "@nestjs/common";
 
 async function bootstrap() {
+  const logger = new Logger("GlobalScraper");
   const app = await NestFactory.createApplicationContext(AppModule);
 
   const mapsService = app.get(MapsService);
   const csvService = app.get(CsvMapsService);
 
-  const COUNTRY = "Argentina";
-  const LOCATION = "Córdoba";
+  const COUNTRY = "EEUU";
+  const CATEGORY = "Restaurants";
+  const CITIES = ["Miami", "Orlando", "Los Angeles"];
+  const LIMIT_PER_CITY = 20;
 
-  const BUSINESS_QUERIES = [
-    "peluquería",
-    "panadería",
-    "ferretería",
-    "taller mecánico",
-    "kiosco",
-    "estudio contable",
-    "consultorio",
-    "local comercial"
-  ];
+  const sessionFileName = `Leads_${COUNTRY}_${CATEGORY}`.replace(/\s/g, "_");
 
-  const LIMIT_PER_QUERY = 100;
+  for (const city of CITIES) {
+    const query = `${CATEGORY} in ${city}, ${COUNTRY}`;
+    logger.log(`Iniciando búsqueda: ${query}`);
 
-  for (const business of BUSINESS_QUERIES) {
-    const searchQuery = `${business} en ${LOCATION} ${COUNTRY}`;
+    try {
+      const results = await mapsService.getPlaces(query, city, LIMIT_PER_CITY);
 
-    const places = await mapsService.getPlaces(searchQuery, LIMIT_PER_QUERY);
+      if (results.length > 0) {
+        csvService.savePlaces(results, sessionFileName);
+        logger.log(`${city} completado con ${results.length} resultados.`);
+      }
+    } catch (err) {
+      logger.error(`Error en ${city}: ${err instanceof Error ? err.message : err}`);
+    }
 
-    csvService.savePlaces(places, searchQuery);
+    await new Promise((r) => setTimeout(r, Math.random() * 3000 + 2000));
   }
 
+  logger.log("Finalizado. Revisa la carpeta /output");
   await app.close();
 }
-
 void bootstrap();

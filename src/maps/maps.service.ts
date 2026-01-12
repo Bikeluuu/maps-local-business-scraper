@@ -1,7 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
-import puppeteer, { Page } from "puppeteer";
+import puppeteer, { Page, Browser } from "puppeteer";
 
 export interface Place {
+  city: string;
   name: string;
   category?: string;
   address?: string;
@@ -12,175 +13,199 @@ export interface Place {
   email?: string;
   rating?: string;
   reviewsCount?: string;
+  plusCode?: string;
+  businessStatus?: string;
+  menuUrl?: string;
+  serviceOptions?: string;
+  googleUrl?: string;
+  workingHours?: string;
+  priceLevel?: string;
 }
-
-const fingerprint = (p: Place): string => {
-  if (p.phone) return `phone:${p.phone}`;
-  if (p.website) return `website:${p.website}`;
-  if (p.social) return `social:${p.social}`;
-  return `name:${p.name}|addr:${p.address ?? ""}`;
-};
 
 @Injectable()
 export class MapsService {
   private readonly logger = new Logger(MapsService.name);
-  private readonly seen = new Set<string>();
+  private seen = new Set<string>();
 
-  async getPlaces(query: string, limit = 100): Promise<Place[]> {
+  async getPlaces(query: string, city: string, limit = 100): Promise<Place[]> {
+    this.seen = new Set<string>();
+    const places: Place[] = [];
+
     const browser = await puppeteer.launch({
       headless: false,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--window-size=1280,1000", "--lang=en-US,en"]
     });
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 800 });
+    await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
+    await page.setViewport({ width: 1280, height: 1000 });
 
-    const url = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
-    this.logger.log(`Opening ${url}`);
+    const url = `https://www.google.com/maps/search/${encodeURIComponent(query)}?hl=en`;
 
-    await page.goto(url, { waitUntil: "networkidle2" });
-    await page.waitForSelector('div[role="feed"]');
-
-    const places: Place[] = [];
-    const cardsSelector = 'div[role="article"]';
-
-    let index = 0;
-    let stuckScrolls = 0;
-    let lastName: string | undefined;
-
-    while (places.length < limit) {
-      const cards = await page.$$(cardsSelector);
-
-      if (index >= cards.length) {
-        const scrolled = await this.scrollFeed(page);
-
-        if (!scrolled) {
-          stuckScrolls++;
-          if (stuckScrolls >= 3) break;
-        } else {
-          stuckScrolls = 0;
-        }
-        continue;
-      }
-
-      const card = cards[index++];
+    try {
+      await page.goto(url, { waitUntil: "networkidle2" });
 
       try {
-        await card.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
-        await card.click();
+        const btn = 'button[aria-label*="Accept all"], button[aria-label*="Agree"], button[aria-label*="Aceptar"]';
+        await page.waitForSelector(btn, { timeout: 5000 });
+        await page.click(btn);
+      } catch {
+        //
+      }
 
-        await this.waitForPlaceChange(page, lastName);
+      await page.waitForSelector('div[role="feed"]', { timeout: 15000 });
 
-        const scraped = await page.evaluate(() => {
-          const text = (s: string) => document.querySelector(s)?.textContent?.trim() || undefined;
+      let retryCount = 0;
+      while (places.length < limit && retryCount < 5) {
+        const cards = await page.$$('div[role="article"]');
+        let newAddedThisScroll = false;
 
-          const name = text("h1.DUwDvf");
-          const category = text('button[jsaction*="pane.rating.category"]');
-          const address = text('button[data-item-id="address"]');
-          const phone = text('button[data-item-id^="phone"]');
+        for (const card of cards) {
+          if (places.length >= limit) break;
 
-          const websiteEl = document.querySelector<HTMLAnchorElement>('a[data-item-id="authority"]');
+          const name = await card.evaluate((el) => {
+            const titleEl = el.querySelector('.fontHeadlineSmall, .qBF1Pd, [role="heading"]');
+            return titleEl?.textContent?.replace(/\s+/g, " ").trim();
+          });
 
-          let website = "";
-          let social = "";
-          let socialType = "";
+          if (name && !this.seen.has(name)) {
+            try {
+              await card.evaluate((el) => el.scrollIntoView({ behavior: "smooth", block: "center" }));
+              await new Promise((r) => setTimeout(r, 800));
+              await card.click();
 
-          if (websiteEl?.href) {
-            const h = websiteEl.href.toLowerCase();
-            if (h.includes("instagram")) {
-              social = websiteEl.href;
-              socialType = "instagram";
-            } else if (h.includes("facebook")) {
-              social = websiteEl.href;
-              socialType = "facebook";
-            } else if (h.includes("wa.me") || h.includes("whatsapp")) {
-              social = websiteEl.href;
-              socialType = "whatsapp";
-            } else {
-              website = websiteEl.href;
+              await this.waitForPlaceChange(page, name);
+              await new Promise((r) => setTimeout(r, 1500));
+
+              const scraped = await this.extractDetails(page, city);
+
+              if (scraped.name) {
+                if (!scraped.email && scraped.website) {
+                  scraped.email = await this.scrapeEmailFromWebsite(browser, scraped.website);
+                }
+                this.seen.add(scraped.name);
+                places.push(scraped);
+                newAddedThisScroll = true;
+                this.logger.log(`[${places.length}] ${scraped.name}`);
+              }
+            } catch {
+              continue;
             }
           }
+        }
 
-          const rating = text('div.F7nice span[aria-hidden="true"]');
-          const reviewsCount = text('div.F7nice span[aria-label*="reviews"]');
-
-          const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/;
-          const emailMatch = document.body.innerText.match(emailRegex);
-
-          return {
-            name,
-            category,
-            address,
-            phone,
-            website,
-            social,
-            socialType,
-            email: emailMatch ? emailMatch[0] : undefined,
-            rating,
-            reviewsCount
-          };
-        });
-
-        if (!scraped?.name) continue;
-        lastName = scraped.name;
-
-        const place: Place = {
-          name: scraped.name,
-          category: scraped.category,
-          address: scraped.address,
-          phone: scraped.phone,
-          website: scraped.website,
-          social: scraped.social,
-          socialType: scraped.socialType,
-          email: scraped.email,
-          rating: scraped.rating,
-          reviewsCount: scraped.reviewsCount
-        };
-
-        const key = fingerprint(place);
-        if (this.seen.has(key)) continue;
-
-        this.seen.add(key);
-        places.push(place);
-
-        this.logger.log(`[${places.length}] ${place.name}`);
-      } catch {
-        continue;
+        const hasReachedEnd = await this.scrollFeed(page);
+        if (newAddedThisScroll) {
+          retryCount = 0;
+        } else {
+          retryCount++;
+          if (hasReachedEnd && retryCount >= 2) break;
+        }
       }
-    }
 
-    await browser.close();
-    return places;
+      await browser.close();
+      return places;
+    } catch (error) {
+      this.logger.error(`Error: ${error}`);
+      await browser.close();
+      return [];
+    }
   }
 
-  private async waitForPlaceChange(page: Page, previousName?: string) {
-    await page.waitForFunction(
-      (prev) => {
-        const el = document.querySelector("h1.DUwDvf");
-        if (!el || !el.textContent) return false;
-        return el.textContent.trim() !== prev;
+  private async extractDetails(page: Page, cityName: string): Promise<Place> {
+    const googleUrl = page.url();
+    return page.evaluate(
+      (url, city) => {
+        const getText = (sel: string) =>
+          (document.querySelector(sel) as HTMLElement)?.innerText?.replace(/\s+/g, " ").trim() || "";
+
+        const name = getText("h1.DUwDvf") || getText(".lfPIob") || getText(".fontHeadlineLarge");
+
+        const rows = document.querySelectorAll("table.eK0Z0c tr");
+        let hours = Array.from(rows)
+          .map((r) => (r as HTMLElement).innerText.replace(/\s+/g, " ").trim())
+          .join(" | ");
+        if (!hours)
+          hours =
+            (document.querySelector('div[jsaction*="pane.schedule.expand"]') as HTMLElement)?.innerText?.split(
+              "\n"
+            )[0] || "";
+
+        let price =
+          document.querySelector('span[aria-label*="Price:"]')?.getAttribute("aria-label")?.replace("Price: ", "") ||
+          "";
+        if (!price) {
+          const priceSpan = Array.from(document.querySelectorAll("span")).find((s) =>
+            /^[$€£]{1,4}$/.test(s.innerText.trim())
+          );
+          price = priceSpan ? priceSpan.innerText : "";
+        }
+
+        const reviewsText = getText('span[aria-label*="reviews"]') || getText('button[aria-label*="reviews"]');
+
+        return {
+          city,
+          name,
+          category: getText('button[jsaction*="pane.rating.category"]'),
+          address: getText('button[data-item-id="address"]'),
+          phone: getText('button[data-item-id^="phone"]'),
+          website: (document.querySelector('a[data-item-id="authority"]') as HTMLAnchorElement)?.href || "",
+          social: "",
+          socialType: "",
+          email: "",
+          rating: getText("span.ceNzR") || getText("div.F7nice span"),
+          reviewsCount: reviewsText.replace(/[^0-9,.]/g, "").trim() || reviewsText,
+          businessStatus: getText(".Z67o1c"),
+          workingHours: hours,
+          priceLevel: price,
+          googleUrl: url
+        };
       },
-      { timeout: 5000 },
-      previousName
+      googleUrl,
+      cityName
     );
   }
 
+  private async waitForPlaceChange(page: Page, name: string) {
+    try {
+      await page.waitForFunction(
+        () => {
+          const title = document.querySelector("h1.DUwDvf")?.textContent?.replace(/\s+/g, " ").trim();
+          return title && title.length > 0;
+        },
+        { timeout: 5000 },
+        name
+      );
+    } catch {
+      //
+    }
+  }
+
   private async scrollFeed(page: Page): Promise<boolean> {
-    return page.evaluate(async () => {
-      const feed = document.querySelector('div[role="feed"]') as HTMLElement;
-      if (!feed) return false;
+    return page.evaluate(async (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return true;
+      const prevHeight = el.scrollHeight;
+      el.scrollBy(0, 1000);
+      await new Promise((r) => setTimeout(r, 2000));
+      return el.scrollHeight === prevHeight;
+    }, 'div[role="feed"]');
+  }
 
-      const prev = feed.scrollTop;
-
-      feed.scrollTo({ top: feed.scrollHeight });
-      await new Promise((r) => setTimeout(r, 1000));
-
-      if (feed.scrollTop === prev) {
-        feed.dispatchEvent(new WheelEvent("wheel", { deltaY: 2000, bubbles: true }));
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-
-      return feed.scrollTop !== prev;
-    });
+  private async scrapeEmailFromWebsite(browser: Browser, url: string): Promise<string> {
+    if (!url || url.includes("facebook.com") || url.includes("instagram.com")) return "";
+    const page = await browser.newPage();
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+      const email = await page.evaluate(() => {
+        const regex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g;
+        return document.body.innerText.match(regex)?.[0] || "";
+      });
+      await page.close();
+      return email;
+    } catch {
+      await page.close();
+      return "";
+    }
   }
 }
