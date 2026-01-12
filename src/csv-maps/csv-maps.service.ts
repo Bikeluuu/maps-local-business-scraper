@@ -1,17 +1,15 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { appendFileSync, existsSync, mkdirSync } from "fs";
+import { Injectable } from "@nestjs/common";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { Place } from "../maps/maps.service";
 
 @Injectable()
 export class CsvMapsService {
-  private readonly logger = new Logger(CsvMapsService.name);
   private readonly outputDir = join(process.cwd(), "output");
 
   savePlaces(places: Place[], fileName: string) {
     if (!existsSync(this.outputDir)) mkdirSync(this.outputDir);
     const filePath = join(this.outputDir, `${fileName}.csv`);
-    const fileExists = existsSync(filePath);
 
     const header =
       [
@@ -31,7 +29,6 @@ export class CsvMapsService {
 
     const rows =
       places
-        .filter((p) => p.name && p.name.length > 0)
         .map((p) =>
           [
             this.escape(p.city),
@@ -50,12 +47,20 @@ export class CsvMapsService {
         )
         .join("\n") + "\n";
 
-    appendFileSync(filePath, fileExists ? rows : header + rows, "utf8");
+    if (!existsSync(filePath)) {
+      writeFileSync(filePath, header + rows, "utf8");
+    } else {
+      appendFileSync(filePath, rows, "utf8");
+    }
   }
 
   private escape(value?: string) {
-    if (!value) return "";
-    const clean = value.replace(/\s+/g, " ").trim();
-    return `"${clean.replace(/"/g, '""')}"`;
+    if (!value) return '""';
+    const cleanValue = value
+      .replace(/[^\x20-\x7EÀ-ÿ]/g, "")
+      .replace(/"/g, '""')
+      .replace(/\s+/g, " ")
+      .trim();
+    return `"${cleanValue}"`;
   }
 }

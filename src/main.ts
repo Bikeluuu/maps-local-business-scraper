@@ -13,8 +13,8 @@ async function bootstrap() {
 
   const COUNTRY = "EEUU";
   const CATEGORY = "Restaurants";
-  const CITIES = ["Miami", "Orlando", "Los Angeles"];
-  const LIMIT_PER_CITY = 20;
+  const CITIES = ["orlando", "Miami", "Los Angeles"];
+  const LIMIT_PER_CITY = 5;
 
   const sessionFileName = `Leads_${COUNTRY}_${CATEGORY}`.replace(/\s/g, "_");
 

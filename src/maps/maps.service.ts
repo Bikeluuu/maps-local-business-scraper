@@ -13,10 +13,7 @@ export interface Place {
   email?: string;
   rating?: string;
   reviewsCount?: string;
-  plusCode?: string;
   businessStatus?: string;
-  menuUrl?: string;
-  serviceOptions?: string;
   googleUrl?: string;
   workingHours?: string;
   priceLevel?: string;
@@ -27,18 +24,24 @@ export class MapsService {
   private readonly logger = new Logger(MapsService.name);
   private seen = new Set<string>();
 
-  async getPlaces(query: string, city: string, limit = 100): Promise<Place[]> {
+  async getPlaces(query: string, city: string, limit = 5): Promise<Place[]> {
     this.seen = new Set<string>();
     const places: Place[] = [];
 
     const browser = await puppeteer.launch({
       headless: false,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--window-size=1280,1000", "--lang=en-US,en"]
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--window-size=1920,1080",
+        "--start-maximized",
+        "--lang=en-US,en"
+      ]
     });
 
     const page = await browser.newPage();
+    await page.setViewport({ width: 1920, height: 1080 });
     await page.setExtraHTTPHeaders({ "Accept-Language": "en-US,en;q=0.9" });
-    await page.setViewport({ width: 1280, height: 1000 });
 
     const url = `https://www.google.com/maps/search/${encodeURIComponent(query)}?hl=en`;
 
@@ -58,24 +61,21 @@ export class MapsService {
       let retryCount = 0;
       while (places.length < limit && retryCount < 5) {
         const cards = await page.$$('div[role="article"]');
-        let newAddedThisScroll = false;
+        let newAdded = false;
 
         for (const card of cards) {
           if (places.length >= limit) break;
 
-          const name = await card.evaluate((el) => {
-            const titleEl = el.querySelector('.fontHeadlineSmall, .qBF1Pd, [role="heading"]');
-            return titleEl?.textContent?.replace(/\s+/g, " ").trim();
-          });
+          const name = await card.evaluate((el) => el.querySelector(".fontHeadlineSmall")?.textContent?.trim());
 
           if (name && !this.seen.has(name)) {
             try {
               await card.evaluate((el) => el.scrollIntoView({ behavior: "smooth", block: "center" }));
-              await new Promise((r) => setTimeout(r, 800));
+              await new Promise((r) => setTimeout(r, 1000));
               await card.click();
 
-              await this.waitForPlaceChange(page, name);
-              await new Promise((r) => setTimeout(r, 1500));
+              await this.waitForPlaceChange(page);
+              await new Promise((r) => setTimeout(r, 2000));
 
               const scraped = await this.extractDetails(page, city);
 
@@ -85,8 +85,8 @@ export class MapsService {
                 }
                 this.seen.add(scraped.name);
                 places.push(scraped);
-                newAddedThisScroll = true;
-                this.logger.log(`[${places.length}] ${scraped.name}`);
+                newAdded = true;
+                this.logger.log(`[${city}] Found: ${scraped.name}`);
               }
             } catch {
               continue;
@@ -94,19 +94,16 @@ export class MapsService {
           }
         }
 
-        const hasReachedEnd = await this.scrollFeed(page);
-        if (newAddedThisScroll) {
-          retryCount = 0;
-        } else {
-          retryCount++;
-          if (hasReachedEnd && retryCount >= 2) break;
-        }
+        if (!newAdded) retryCount++;
+        else retryCount = 0;
+
+        await this.scrollFeed(page);
       }
 
       await browser.close();
       return places;
     } catch (error) {
-      this.logger.error(`Error: ${error}`);
+      this.logger.error(`Error in city ${city}: ${error}`);
       await browser.close();
       return [];
     }
@@ -116,31 +113,26 @@ export class MapsService {
     const googleUrl = page.url();
     return page.evaluate(
       (url, city) => {
-        const getText = (sel: string) =>
-          (document.querySelector(sel) as HTMLElement)?.innerText?.replace(/\s+/g, " ").trim() || "";
+        const clean = (text: string) =>
+          text
+            .replace(/[^\x20-\x7EÀ-ÿ]/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+        const getText = (sel: string) => {
+          const el = document.querySelector(sel) as HTMLElement;
+          return el ? clean(el.innerText) : "";
+        };
 
-        const name = getText("h1.DUwDvf") || getText(".lfPIob") || getText(".fontHeadlineLarge");
+        const name = getText("h1.DUwDvf") || getText(".lfPIob");
+        if (!name) return {} as Place;
 
         const rows = document.querySelectorAll("table.eK0Z0c tr");
-        let hours = Array.from(rows)
-          .map((r) => (r as HTMLElement).innerText.replace(/\s+/g, " ").trim())
+        const hours = Array.from(rows)
+          .map((r) => clean((r as HTMLElement).innerText))
           .join(" | ");
-        if (!hours)
-          hours =
-            (document.querySelector('div[jsaction*="pane.schedule.expand"]') as HTMLElement)?.innerText?.split(
-              "\n"
-            )[0] || "";
-
-        let price =
-          document.querySelector('span[aria-label*="Price:"]')?.getAttribute("aria-label")?.replace("Price: ", "") ||
-          "";
-        if (!price) {
-          const priceSpan = Array.from(document.querySelectorAll("span")).find((s) =>
-            /^[$€£]{1,4}$/.test(s.innerText.trim())
-          );
-          price = priceSpan ? priceSpan.innerText : "";
-        }
-
+        const priceSpan = Array.from(document.querySelectorAll("span")).find((s) =>
+          /^[$€£]{1,4}$/.test(s.innerText.trim())
+        );
         const reviewsText = getText('span[aria-label*="reviews"]') || getText('button[aria-label*="reviews"]');
 
         return {
@@ -154,10 +146,10 @@ export class MapsService {
           socialType: "",
           email: "",
           rating: getText("span.ceNzR") || getText("div.F7nice span"),
-          reviewsCount: reviewsText.replace(/[^0-9,.]/g, "").trim() || reviewsText,
+          reviewsCount: reviewsText.replace(/[^0-9]/g, ""),
           businessStatus: getText(".Z67o1c"),
           workingHours: hours,
-          priceLevel: price,
+          priceLevel: priceSpan ? priceSpan.innerText.trim() : "",
           googleUrl: url
         };
       },
@@ -166,37 +158,33 @@ export class MapsService {
     );
   }
 
-  private async waitForPlaceChange(page: Page, name: string) {
+  private async waitForPlaceChange(page: Page) {
     try {
       await page.waitForFunction(
         () => {
-          const title = document.querySelector("h1.DUwDvf")?.textContent?.replace(/\s+/g, " ").trim();
+          const title = document.querySelector("h1.DUwDvf")?.textContent?.trim();
           return title && title.length > 0;
         },
-        { timeout: 5000 },
-        name
+        { timeout: 5000 }
       );
     } catch {
       //
     }
   }
 
-  private async scrollFeed(page: Page): Promise<boolean> {
-    return page.evaluate(async (sel) => {
-      const el = document.querySelector(sel);
-      if (!el) return true;
-      const prevHeight = el.scrollHeight;
-      el.scrollBy(0, 1000);
-      await new Promise((r) => setTimeout(r, 2000));
-      return el.scrollHeight === prevHeight;
-    }, 'div[role="feed"]');
+  private async scrollFeed(page: Page) {
+    await page.evaluate(() => {
+      const el = document.querySelector('div[role="feed"]');
+      if (el) el.scrollBy(0, 1000);
+    });
+    await new Promise((r) => setTimeout(r, 2000));
   }
 
   private async scrapeEmailFromWebsite(browser: Browser, url: string): Promise<string> {
     if (!url || url.includes("facebook.com") || url.includes("instagram.com")) return "";
     const page = await browser.newPage();
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 8000 });
       const email = await page.evaluate(() => {
         const regex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/g;
         return document.body.innerText.match(regex)?.[0] || "";
